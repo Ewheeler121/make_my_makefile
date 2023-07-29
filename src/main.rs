@@ -1,5 +1,4 @@
-use std::{fs, fmt, fs::File};
-use std::io::Write;
+use std::{fs, path::Path};
 
 fn parse_dir(files: &mut Vec<String>, dir: &String, detph: i32) {
     let current_path: fs::ReadDir = match fs::read_dir(&dir) {
@@ -10,19 +9,34 @@ fn parse_dir(files: &mut Vec<String>, dir: &String, detph: i32) {
     };
 
     for file in current_path {
-        match file {
+       match file {
             Ok(f) => {
-                if f.path().is_dir() && 0 < detph {
-                    parse_dir(files, &dir, detph - 1);
+                if f.path().is_dir() || f.path().is_symlink() {
+                    parse_dir(files, &f.path().display().to_string().to_owned(), detph - 1);
                 }else{
-                    files.push(f.path().display().to_string()[2..].to_owned());
+                    match get_file_type(f.path().display().to_string().to_owned()) {
+                        Some(ext) => {
+                            if ext == "c" || ext == "h" || ext == "cpp" || ext == "hpp" {
+                                 files.push(f.path().display().to_string()[2..].to_owned());
+                            }
+                        },
+                        None => { }
+                    } 
                 }
             },
-            Err(err) => {
-                eprintln!("ingoring file: {}", err); 
-            }
+            Err(_) => { }
         }
     }
+}
+
+fn get_file_type(file_name: String) -> Option<String> {
+    let path = Path::new(&file_name);
+    if path.exists() {
+        if let Some(ext) = path.extension() {
+            return Some(ext.to_string_lossy().into_owned());
+        }
+    }
+    None
 }
 
 fn main() {
@@ -39,13 +53,28 @@ fn main() {
     for file in current_path {
         match file {
             Ok(f) => {
-                if f.path().is_dir() {
-                    parse_dir(&mut src_files, &f.path().display().to_string()[2..].to_owned(), depth.clone());
+                if f.path().is_dir() || f.path().is_symlink() {
+                    parse_dir(&mut src_files, &f.path().display().to_string().to_owned(), depth.clone());
                 }else{
-                    src_files.push(f.path().display().to_string()[2..].to_owned());
+                    match get_file_type(f.path().display().to_string().to_owned()) {
+                        Some(ext) => {
+                            if ext == "c" || ext == "h" || ext == "cpp" || ext == "hpp" {
+                                 src_files.push(f.path().display().to_string()[2..].to_owned());
+                            }
+                        },
+                        None => { }
+                    } 
                 }
             },
             Err(_) => { }
         }
     }
-} 
+
+    print!("CC = gcc\n\nCFLAGS := -Wall -Wextra -std=c17\n\n SRC := ");
+    for src in src_files {
+        print!("{} \\\n\t", src);
+    }
+    print!("\n\n TARGET := a\n\n");
+    print!("all: $(TARGET)\n\n$(TARGET): $(SRC)\n\t$(CC) $(CFLAGS) $(SRC) -o $(TARGET)\n\n");
+    print!("clean:\n\trm -f $(TARGET)\n");
+}
